@@ -1,0 +1,35 @@
+# Symphonic v1 config
+#
+# Copy this to conf.yaml and fill in your own values.
+# consent_confirmed MUST be true or Symphonic refuses to run at all.
+# Only set this to true against targets you own or have explicit,
+# written authorization to test.
+
+consent_confirmed: false
+
+target: "https://example.com"
+
+# Seconds to wait between launching each tool. Not per-request throttling
+# inside each tool — just spacing between Symphonic's own invocations.
+rate_limit_seconds: 2
+
+tools:
+  subfinder: true
+  katana: true
+  httpx: true
+  ffuf: true
+  arjun: true
+  nuclei: true
+  dalfox: true
+  sqlmap: false
+
+# Flags block: fully optional, fully overridable. Any tool listed here
+# replaces its default flag string entirely. Leave a tool out and it
+# just uses the built-in default (see defaultFlags in main.go).
+# {target} and {domain} get substituted with your target value above.
+# Nothing in Symphonic inspects or restricts what you put here — same
+# trust model as running these tools directly yourself.
+flags:
+  sqlmap: "-u {target} --batch --level=1 --risk=1"
+  nuclei: "-u {target} -silent -tags exposure,misconfig,default-login,tech"
+
