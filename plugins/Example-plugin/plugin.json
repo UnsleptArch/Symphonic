@@ -1,5 +1,0 @@
-{
-  "name": "Example-plugin",
-  "entrypoint": "main.py",
-  "hooks": ["after_tool:httpx"]
-}

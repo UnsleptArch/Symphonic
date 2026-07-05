@@ -43,6 +43,40 @@ replacement for a structured manual pentest methodology.
   block replaces them entirely, no inspection or filtering. Same trust
   model as running these tools yourself directly.
 
+## Project layout
+
+```
+symphonic/
+├── main.go              # orchestration loop only — loads config, runs
+│                         # tools in order, dispatches plugin hooks
+├── config.go             # Config struct + the tiny hand-rolled
+│                         # conf.yaml parser (not a general YAML parser)
+├── tools.go              # toolOrder, defaultFlags, buildCommand
+│                         # ({target}/{domain}/{output} substitution)
+├── signals.go             # v1.2 signal extraction: httpx/ffuf/nuclei
+│                         # JSON output -> short "signal" strings
+├── results.go             # Result struct + results.json writer
+├── plugins.go             # plugin manifest loading, entrypoint
+│                         # containment check, subprocess protocol
+├── plugins/
+│   ├── _sdk/
+│   │   └── symphonic_plugin_sdk.py   # Python SDK for plugin authors
+│   ├── README.md          # plugin-author quickstart
+│   └── <plugin-name>/
+│       ├── plugin.json    # manifest: name, entrypoint, hooks
+│       └── main.py        # plugin implementation
+├── conf.example.yaml       # copy to conf.yaml and fill in
+├── install.sh              # builds the binary, checks for tool deps
+├── wordlist.txt            # small built-in wordlist for ffuf
+└── API.md                  # full plugin API reference
+```
+
+## Building
+
+```
+./install.sh
+```
+
 This builds the `symphonic` binary, checks whether
 subfinder/katana/httpx/ffuf/arjun/nuclei/dalfox/sqlmap are on your
 PATH (and tells you how to get whichever ones aren't), and copies

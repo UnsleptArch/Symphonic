@@ -1,5 +1,5 @@
 # Symphonic v1 config
-#
+# Much of this is vibe-coded, I am more than happy to get help / merge any good PR's.
 # Copy this to conf.yaml and fill in your own values.
 # consent_confirmed MUST be true or Symphonic refuses to run at all.
 # Only set this to true against targets you own or have explicit,
@@ -49,6 +49,6 @@ allowed_domains: []
 plugins_enabled: false
 plugins_dir: "plugins"
 plugins:
-  Example-plugin: false
+  wp-flag: false
 
 

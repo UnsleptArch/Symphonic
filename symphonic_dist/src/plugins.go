@@ -1,4 +1,3 @@
-
 // plugins.go — Python-based plugin system.
 //
 // Plugins are unsandboxed subprocesses. That's intentional, not an
