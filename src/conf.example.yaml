@@ -25,11 +25,30 @@ tools:
 
 # Flags block: fully optional, fully overridable. Any tool listed here
 # replaces its default flag string entirely. Leave a tool out and it
-# just uses the built-in default (see defaultFlags in main.go).
+# just uses the built-in default (see defaultFlags in tools.go).
 # {target} and {domain} get substituted with your target value above.
 # Nothing in Symphonic inspects or restricts what you put here — same
 # trust model as running these tools directly yourself.
 flags:
   sqlmap: "-u {target} --batch --level=1 --risk=1"
-  nuclei: "-u {target} -silent -tags exposure,misconfig,default-login,tech"
+  nuclei: "-u {target} -silent -jsonl -tags exposure,misconfig,default-login,tech"
+
+# SCAFFOLD, not enforced by anything yet. Intended for v1.3's
+# conditional/chained execution (e.g. subfinder finds a new subdomain —
+# should the pipeline auto-scan it?). Parsed now so it's available when
+# that lands; harmless if left empty.
+allowed_domains: []
+#  - example.com
+#  - staging.example.com
+
+# Plugins are unsandboxed Python subprocesses — same privileges as
+# running the script yourself. Only enable plugins you wrote or fully
+# trust. Each key under plugins: must match a directory name under
+# plugins_dir, and must be explicitly set to true to run — same pattern
+# as tools: above.
+plugins_enabled: false
+plugins_dir: "plugins"
+plugins:
+  Example-plugin: false
+
 

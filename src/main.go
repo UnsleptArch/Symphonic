@@ -1,29 +1,31 @@
-// Symphonic v1.1 — simplest orchestrator + state-awareness layer.
+// Symphonic v1.2 — orchestrator + state-awareness layer + signal
+// extraction + Python plugin system.
 //
 // What this does, in order:
 //   1. Loads conf.yaml (config.go)
 //   2. Refuses to run at all unless consent_confirmed: true is set
-//   3. Runs each enabled tool ONE AT A TIME (no concurrency yet) against
+//   3. Loads any plugins under PluginsDir (plugins.go), runs before_run
+//      hooks
+//   4. Runs each enabled tool ONE AT A TIME (no concurrency yet) against
 //      the target, using flags from conf.yaml's "flags:" block, or a
 //      sane default if the user didn't set one for that tool (tools.go)
-//   4. Dumps each tool's raw output to a timestamped log file, and
-//      records a structured Result per tool (results.go)
-//   5. Writes results.json and prints a summary
+//   5. For httpx/ffuf/nuclei, parses the tool's structured output into
+//      short "signal" strings (signals.go). dalfox/sqlmap stay log-only.
+//   6. Runs any after_tool:<name> plugin hooks for that tool
+//   7. Writes results.json, runs after_run plugin hooks, prints a summary
 //
-// No output parsing, no signal extraction, no conditional execution,
-// no correlation, no scoring, no bandit. That's v1.2+.
+// No conditional execution, no correlation, no scoring, no bandit yet.
+// That's v1.3+.
 //
 // FOSS project, no enforcement: defaultFlags in tools.go are sane
 // starting points, not a ceiling. Anything in conf.yaml's flags: block
 // replaces them entirely for that tool — this program does not inspect,
-// filter, or block particular flag values. That's the same trust model
-// as nmap/sqlmap/every other tool this orchestrates: the operator
-// decides what to run, this just runs it against the target they
-// configured and only if they've set consent_confirmed themselves.
+// filter, or block particular flag values.
 //
 // Core Symphonic will never ship or maintain RCE-class or DDoS/load-
 // class tooling in-tree. If that's ever wanted, it belongs in an
-// external, unreviewed plugin — not this repo.
+// external, unreviewed plugin — not this repo. Plugins are unsandboxed
+// subprocesses by design; see plugins.go for why.
 package main
 
 import (
@@ -72,10 +74,24 @@ func main() {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Symphonic v1.1 — target: %s\n", cfg.Target)
+	fmt.Printf("Symphonic v1.2 — target: %s\n", cfg.Target)
 	fmt.Printf("Output directory: %s\n\n", outDir)
 
+	var manifests []PluginManifest
+	if cfg.PluginsEnabled {
+		manifests = loadPlugins(cfg.PluginsDir)
+		fmt.Printf("Plugins loaded: %d (from %s)\n\n", len(manifests), cfg.PluginsDir)
+	}
+
 	var results []Result
+
+	pluginCtx := PluginContext{
+		Target:    cfg.Target,
+		Domain:    bareDomain(cfg.Target),
+		OutputDir: outDir,
+		Results:   results,
+	}
+	results = append(results, runPluginsForHook("before_run", pluginCtx, manifests, cfg, outDir)...)
 
 	for i, tool := range toolOrder {
 		enabled, ok := cfg.Tools[tool]
@@ -85,7 +101,12 @@ func main() {
 
 		r := newResult(tool, cfg.Target)
 
-		cmd := buildCommand(tool, cfg.Target, cfg)
+		jsonOutPath := ""
+		if tool == "ffuf" {
+			jsonOutPath = filepath.Join(outDir, tool+".json")
+		}
+
+		cmd := buildCommand(tool, cfg.Target, cfg, jsonOutPath)
 		if cmd == nil {
 			r.ErrMsg = "unknown tool"
 			results = append(results, r)
@@ -124,7 +145,20 @@ func main() {
 			r.LogFile = outFile
 		}
 
+		// v1.2 signal extraction — ffuf's structured output lives in its
+		// own {output} JSON file, httpx/nuclei write JSONL to stdout
+		// (already captured in outFile). dalfox/sqlmap return nil here,
+		// which is expected, not an error.
+		signalFile := outFile
+		if tool == "ffuf" {
+			signalFile = jsonOutPath
+		}
+		r.Signals = extractSignals(tool, signalFile)
+
 		results = append(results, r)
+
+		pluginCtx.Results = results
+		results = append(results, runPluginsForHook("after_tool:"+tool, pluginCtx, manifests, cfg, outDir)...)
 
 		// Simple global throttle between tool invocations. This is NOT
 		// per-request rate limiting inside each tool — sqlmap/nuclei/etc
@@ -137,6 +171,9 @@ func main() {
 		}
 	}
 
+	pluginCtx.Results = results
+	results = append(results, runPluginsForHook("after_run", pluginCtx, manifests, cfg, outDir)...)
+
 	if err := writeResults(outDir, results); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
 	}
@@ -147,7 +184,7 @@ func main() {
 			fmt.Printf("%-8s FAILED TO RUN — %s\n", r.Tool, r.ErrMsg)
 			continue
 		}
-		fmt.Printf("%-8s exit=%d  log=%s\n", r.Tool, r.ExitCode, r.LogFile)
+		fmt.Printf("%-8s exit=%d  signals=%d  log=%s\n", r.Tool, r.ExitCode, len(r.Signals), r.LogFile)
 	}
 	fmt.Printf("\nStructured results: %s\n", filepath.Join(outDir, "results.json"))
 }
